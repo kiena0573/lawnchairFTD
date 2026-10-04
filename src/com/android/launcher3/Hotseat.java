@@ -26,11 +26,18 @@ import static com.android.launcher3.util.MultiTranslateDelegate.INDEX_BUBBLE_ADJ
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.app.WallpaperManager;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -39,7 +46,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewDebug;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
@@ -53,6 +59,7 @@ import com.android.launcher3.util.MultiPropertyFactory.MultiProperty;
 import com.android.launcher3.util.MultiTranslateDelegate;
 import com.android.launcher3.util.MultiValueAlpha;
 import com.android.launcher3.views.ActivityContext;
+import com.hoko.blur.HokoBlur;
 
 import java.io.PrintWriter;
 import java.lang.annotation.Retention;
@@ -201,8 +208,41 @@ public class Hotseat extends FrameLayout implements Insettable {
         setClipToPadding(false);
     }
 
+    private Drawable createBlurredWallpaperDrawable() {
+        try {
+            WallpaperManager wallpaperManager = WallpaperManager.getInstance(getContext());
+            Drawable wallpaperDrawable = wallpaperManager.getDrawable();
+            if (wallpaperDrawable == null) {
+                return null;
+            }
+
+            int width = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
+            int height = getHeight() > 0 ? getHeight() : getResources().getDisplayMetrics().heightPixels;
+            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            wallpaperDrawable.setBounds(0, 0, width, height);
+            wallpaperDrawable.draw(canvas);
+
+            Paint overlay = new Paint();
+            overlay.setColor(Color.WHITE);
+            overlay.setAlpha(80);
+            canvas.drawRect(0, 0, width, height, overlay);
+
+            Bitmap blurredBitmap = HokoBlur.with(getContext())
+                    .forceCopy(true)
+                    .scheme(HokoBlur.SCHEME_OPENGL)
+                    .sampleFactor(1)
+                    .radius(20)
+                    .blur(bitmap);
+
+            return new BitmapDrawable(getResources(), blurredBitmap);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private void setUpBackground() {
-        if(!preferenceManager.getHotseatBG().get()) return;
+        if (!preferenceManager.getHotseatBG().get()) return;
 
         var bgColor = PreferenceCacheExtensionsKt.firstCached(preferenceManager2.getHotseatBackgroundColor());
         var transparency = preferenceManager.getHotseatBGAlpha().get();
@@ -224,7 +264,19 @@ public class Hotseat extends FrameLayout implements Insettable {
         background.setCornerRadius(cornerRadius);
         InsetDrawable bg = new InsetDrawable(background,
                 insetHorizontalLeft, insetVerticalTop, insetHorizontalRight, insetVerticalBottom);
-        setBackground(bg);
+
+        Drawable blurredWallpaper = createBlurredWallpaperDrawable();
+        if (blurredWallpaper != null) {
+            try {
+                LayerDrawable layered = new LayerDrawable(new Drawable[]{blurredWallpaper, bg});
+                layered.setLayerInset(1, insetHorizontalLeft, insetVerticalTop, insetHorizontalRight, insetVerticalBottom);
+                setBackground(layered);
+            } catch (Throwable ignored) {
+                setBackground(bg);
+            }
+        } else {
+            setBackground(bg);
+        }
     }
 
     /** Provides translation X for hotseat icons for the channel. */
@@ -459,8 +511,6 @@ public class Hotseat extends FrameLayout implements Insettable {
             return false;
         }
 
-        // Multi-page dock: own the icon-band stream and dispatch it to the pager so empty
-        // pages can still scroll (same pattern as single-page workspace forwarding).
         if (mPagedView.isPagingEnabled()) {
             final int action = ev.getAction() & MotionEvent.ACTION_MASK;
             if (action == MotionEvent.ACTION_DOWN) {
@@ -470,7 +520,6 @@ public class Hotseat extends FrameLayout implements Insettable {
             return mSendTouchToPager;
         }
 
-        // Single-page dock: forward horizontal swipes to workspace.
         if (mWorkspace != null) {
             mSendTouchToWorkspace = mWorkspace.onInterceptTouchEvent(ev);
             return mSendTouchToWorkspace;
@@ -656,5 +705,4 @@ public class Hotseat extends FrameLayout implements Insettable {
                 "ALPHA_CHANNEL_TASKBAR_STASH"
         );
     }
-
 }
