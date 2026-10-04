@@ -46,6 +46,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewDebug;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
@@ -99,7 +100,6 @@ public class Hotseat extends FrameLayout implements Insettable {
     public @interface IconsTranslationX {
     }
 
-    // Ratio of empty space, qsb should take up to appear visually centered.
     public static final float QSB_CENTER_FACTOR = .325f;
     private static final int BUBBLE_BAR_ADJUSTMENT_ANIMATION_DURATION_MS = 250;
     private static final int DOCK_PAGE_INDICATOR_HEIGHT_DP = 8;
@@ -149,8 +149,6 @@ public class Hotseat extends FrameLayout implements Insettable {
         }
 
         if (!hotseatMode.isAvailable(context)) {
-            // The current hotseat mode is not available,
-            // setting the hotseat mode to one that is always available
             hotseatMode = LawnchairHotseat.INSTANCE;
             com.patrykmichalik.opto.core.PreferenceExtensionsKt.setBlocking(preferenceManager2.getHotseatMode(), hotseatMode);
         }
@@ -189,7 +187,6 @@ public class Hotseat extends FrameLayout implements Insettable {
 
         addView(mQsb);
 
-        // Create an initial page so alpha/translation channels have a target during construction.
         mPagedView.resetPages(false, null, mActivity.getDeviceProfile());
 
         mIconsAlphaChannels = new MultiValueAlpha(mIconsContainer, ALPHA_CHANNEL_CHANNELS_COUNT);
@@ -225,14 +222,18 @@ public class Hotseat extends FrameLayout implements Insettable {
 
             Paint overlay = new Paint();
             overlay.setColor(Color.WHITE);
-            overlay.setAlpha(80);
+            int blurAlpha = preferenceManager.getDockBlurAlpha().get();
+            overlay.setAlpha(Math.min(blurAlpha, 150));
             canvas.drawRect(0, 0, width, height, overlay);
+
+            int blurRadius = preferenceManager.getDockBlurRadius().get();
+            int sampleFactor = preferenceManager.getDockBlurSampleFactor().get();
 
             Bitmap blurredBitmap = HokoBlur.with(getContext())
                     .forceCopy(true)
                     .scheme(HokoBlur.SCHEME_OPENGL)
-                    .sampleFactor(1)
-                    .radius(20)
+                    .sampleFactor(sampleFactor)
+                    .radius(blurRadius)
                     .blur(bitmap);
 
             return new BitmapDrawable(getResources(), blurredBitmap);
@@ -279,12 +280,10 @@ public class Hotseat extends FrameLayout implements Insettable {
         }
     }
 
-    /** Provides translation X for hotseat icons for the channel. */
     public MultiProperty getIconsTranslationX(@IconsTranslationX int channelId) {
         return mIconsTranslationXFactory.get(channelId);
     }
 
-    /** Provides translation X for hotseat Qsb. */
     @Nullable
     public MultiProperty getQsbTranslationX() {
         return mQsbTranslationX;
@@ -294,19 +293,16 @@ public class Hotseat extends FrameLayout implements Insettable {
         return mPagedView;
     }
 
-    /** Returns the CellLayout for the given dock page. */
     @Nullable
     public CellLayout getPageAt(int page) {
         return mPagedView.getPageAt(page);
     }
 
-    /** Returns the currently visible dock page layout. */
     @Nullable
     public CellLayout getCurrentPageLayout() {
         return mPagedView.getCurrentCellLayout();
     }
 
-    /** Returns all dock page layouts. */
     public CellLayout[] getPageLayouts() {
         int count = mPagedView.getPageCount();
         CellLayout[] pages = new CellLayout[count];
@@ -316,7 +312,6 @@ public class Hotseat extends FrameLayout implements Insettable {
         return pages;
     }
 
-    /** Whether {@code layout} is one of this hotseat's page CellLayouts. */
     public boolean isHotseatPage(View layout) {
         if (!(layout instanceof CellLayout)) {
             return false;
@@ -324,9 +319,6 @@ public class Hotseat extends FrameLayout implements Insettable {
         return layout.getParent() == mPagedView;
     }
 
-    /**
-     * Returns orientation specific cell X given invariant order in the hotseat
-     */
     public int getCellXFromOrder(int rank) {
         if (mHasVerticalHotseat) {
             return 0;
@@ -337,9 +329,6 @@ public class Hotseat extends FrameLayout implements Insettable {
         return localRank % numColumns;
     }
 
-    /**
-     * Returns orientation specific cell Y given invariant order in the hotseat
-     */
     public int getCellYFromOrder(int rank) {
         if (mHasVerticalHotseat) {
             CellLayout page = getCurrentPageLayout();
@@ -352,7 +341,6 @@ public class Hotseat extends FrameLayout implements Insettable {
         return localRank / numColumns;
     }
 
-    /** Returns the dock page index for a global hotseat rank. */
     public int getPageFromOrder(int rank) {
         if (mHasVerticalHotseat) {
             return 0;
@@ -401,9 +389,6 @@ public class Hotseat extends FrameLayout implements Insettable {
         }
     }
 
-    /**
-     * Adjust the hotseat icons for the bubble bar.
-     */
     public void adjustForBubbleBar(boolean isBubbleBarVisible) {
         DeviceProfile dp = mActivity.getDeviceProfile();
         boolean shouldAdjust = isBubbleBarVisible
@@ -639,52 +624,38 @@ public class Hotseat extends FrameLayout implements Insettable {
         mQsb.layout(left, top, right, bottom);
     }
 
-    /**
-     * Sets the alpha value of the specified alpha channel of just our ShortcutAndWidgetContainer.
-     */
     public void setIconsAlpha(float alpha, @HotseatQsbAlphaId int channelId) {
         getIconsAlpha(channelId).setValue(alpha);
     }
 
-    /**
-     * Sets the alpha value of just our QSB.
-     */
     public void setQsbAlpha(float alpha, @HotseatQsbAlphaId int channelId) {
         getQsbAlpha(channelId).setValue(alpha);
     }
 
-    /** Returns the alpha channel for ShortcutAndWidgetContainer */
     public MultiProperty getIconsAlpha(@HotseatQsbAlphaId int channelId) {
         return mIconsAlphaChannels.get(channelId);
     }
 
-    /** Returns the alpha channel for Qsb */
     public MultiProperty getQsbAlpha(@HotseatQsbAlphaId int channelId) {
         return mQsbAlphaChannels.get(channelId);
     }
 
-    /**
-     * Returns the QSB inside hotseat
-     */
     public View getQsb() {
         return mQsb;
     }
 
-    /** Delegates to the current page's shortcuts container. */
     @Nullable
     public ShortcutAndWidgetContainer getShortcutsAndWidgets() {
         CellLayout page = getCurrentPageLayout();
         return page != null ? page.getShortcutsAndWidgets() : null;
     }
 
-    /** Delegates accessibility drag helper to the current page. */
     @Nullable
     public DragAndDropAccessibilityDelegate getDragAndDropAccessibilityDelegate() {
         CellLayout page = getCurrentPageLayout();
         return page != null ? page.getDragAndDropAccessibilityDelegate() : null;
     }
 
-    /** Dumps the Hotseat internal state */
     public void dump(String prefix, PrintWriter writer) {
         writer.println(prefix + "Hotseat:");
         writer.println(prefix + "\tpages: " + mPagedView.getPageCount()

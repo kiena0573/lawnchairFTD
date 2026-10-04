@@ -182,6 +182,15 @@ class PreferenceManager @Inject constructor(
     val wallpaperBlur = IntPref("pref_wallpaperBlur", 25, recreate)
     val wallpaperBlurFactorThreshold = FloatPref("pref_wallpaperBlurFactor", 3.0F, recreate)
 
+    // Blur customization for dock and drawer
+    val dockBlurRadius = IntPref("pref_dockBlurRadius", 20, recreate)
+    val dockBlurAlpha = IntPref("pref_dockBlurAlpha", 120, recreate)
+    val dockBlurSampleFactor = IntPref("pref_dockBlurSampleFactor", 1, recreate)
+
+    val drawerBlurRadius = IntPref("pref_drawerBlurRadius", 18, recreate)
+    val drawerBlurAlpha = IntPref("pref_drawerBlurAlpha", 90, recreate)
+    val drawerBlurSampleFactor = IntPref("pref_drawerBlurSampleFactor", 1, recreate)
+
     val drawerList = BoolPref("pref_drawerList", true, recreate)
     val folderApps = BoolPref("pref_hideFolderApps", true, reloadGrid)
 
